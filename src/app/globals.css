@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F6F8FB;
+  --foreground: #0A1224;
+  --muted: #475569;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-mist: #F6F8FB;
+  --color-ink-950: #050A14;
+  --color-ink-900: #0A1224;
+  --color-ink-800: #101C36;
+  --color-ink-700: #182A4D;
+  --color-electric-400: #5B8CFF;
+  --color-electric-500: #2F6BFF;
+  --color-electric-600: #1D55E8;
+  --color-electric-700: #1642BA;
+  --color-solar-300: #FFD98A;
+  --color-solar-400: #FFC247;
+  --color-solar-500: #F5A524;
+  --color-solar-600: #D98A0B;
+  --font-display: var(--font-plus-jakarta-sans);
+  --font-sans: var(--font-inter);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), sans-serif;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-electric-500);
+  outline-offset: 2px;
+}
+
+.bg-brand-depth {
+  background-image:
+    radial-gradient(circle at 84% 10%, rgb(47 107 255 / 13%), transparent 34%),
+    linear-gradient(135deg, var(--color-ink-900), var(--color-ink-800) 58%, var(--color-electric-700));
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 500ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
