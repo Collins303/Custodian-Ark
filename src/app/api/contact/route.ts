@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { sendTransactionalEmail } from '@/lib/mail/mailgun';
+import nodemailer from 'nodemailer';
 
 const contactSchema = z.object({
   name: z.string().min(2),
@@ -10,14 +10,26 @@ const contactSchema = z.object({
   message: z.string().min(10),
 });
 
+// Create the transporter using your Mailtrap environment variables
+const transporter = nodemailer.createTransport({
+  host: "sandbox.smtp.mailtrap.io",
+  port: 2525,
+  auth: {
+    user: process.env.MAILTRAP_USER,
+    pass: process.env.MAILTRAP_PASS
+  }
+});
+
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
     const payload = Object.fromEntries(form.entries());
     const parsed = contactSchema.parse(payload);
 
-    const emailResult = await sendTransactionalEmail({
-      to: parsed.email,
+    // Send the email using Nodemailer and Mailtrap
+    await transporter.sendMail({
+      from: '"Custodian Ark Contact" <no-reply@custodianark.com>', // The sender address
+      to: parsed.email, // Sends confirmation to the user who filled the form
       subject: `Contact request: ${parsed.subject}`,
       html: `
         <h2>New contact request</h2>
@@ -31,16 +43,13 @@ export async function POST(request: Request) {
       text: `New contact request from ${parsed.name} (${parsed.email})\nPhone: ${parsed.phone ?? 'Not provided'}\nSubject: ${parsed.subject}\n\n${parsed.message}`,
     });
 
-    if (!emailResult.ok) {
-      return NextResponse.json({ ok: false, error: emailResult.reason }, { status: 500 });
-    }
-
     return NextResponse.json({
       ok: true,
       message: 'Contact request submitted successfully.',
       data: parsed,
     });
   } catch (error) {
+    console.error("Mailtrap sending error:", error);
     return NextResponse.json({ ok: false, error: 'Invalid contact form submission.' }, { status: 400 });
   }
 }
