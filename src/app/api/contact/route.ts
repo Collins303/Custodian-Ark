@@ -10,26 +10,32 @@ const contactSchema = z.object({
   message: z.string().min(10),
 });
 
-// Create the transporter using your Mailtrap environment variables
-const transporter = nodemailer.createTransport({
-  host: "sandbox.smtp.mailtrap.io",
-  port: 2525,
-  auth: {
-    user: process.env.MAILTRAP_USER,
-    pass: process.env.MAILTRAP_PASS
-  }
-});
-
 export async function POST(request: Request) {
   try {
-    const form = await request.formData();
-    const payload = Object.fromEntries(form.entries());
+    const contentType = request.headers.get('content-type') || '';
+    let payload: any = {};
+
+    if (contentType.includes('application/json')) {
+      payload = await request.json();
+    } else {
+      const form = await request.formData();
+      payload = Object.fromEntries(form.entries());
+    }
+
     const parsed = contactSchema.parse(payload);
 
-    // Send the email using Nodemailer and Mailtrap
+    const transporter = nodemailer.createTransport({
+      host: "sandbox.smtp.mailtrap.io",
+      port: 2525,
+      auth: {
+        user: process.env.MAILTRAP_USER,
+        pass: process.env.MAILTRAP_PASS
+      }
+    });
+
     await transporter.sendMail({
-      from: '"Custodian Ark Contact" <no-reply@custodianark.com>', // The sender address
-      to: parsed.email, // Sends confirmation to the user who filled the form
+      from: '"Custodian Ark Contact" <no-reply@custodianark.com>',
+      to: parsed.email,
       subject: `Contact request: ${parsed.subject}`,
       html: `
         <h2>New contact request</h2>
@@ -48,8 +54,11 @@ export async function POST(request: Request) {
       message: 'Contact request submitted successfully.',
       data: parsed,
     });
-  } catch (error) {
-    console.error("Mailtrap sending error:", error);
-    return NextResponse.json({ ok: false, error: 'Invalid contact form submission.' }, { status: 400 });
+  } catch (error: any) {
+    console.error("DETAILED CONTACT ERROR:", error);
+    return NextResponse.json({ 
+      ok: false, 
+      error: error.message || 'Invalid contact form submission.' 
+    }, { status: 400 });
   }
 }

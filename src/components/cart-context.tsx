@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { products } from '@/lib/site-data';
+import { createClient } from '@supabase/supabase-js';
 
 export type CartItem = {
   productId: string;
@@ -24,47 +25,107 @@ type CartContextValue = {
 const storageKey = 'custodian-ark-cart';
 const CartContext = createContext<CartContextValue | null>(null);
 
+// Initialize Supabase Client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
+  // 1. Track User Authentication State
   useEffect(() => {
-    try {
-      const storedItems: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]');
-      if (Array.isArray(storedItems)) {
-        setItems(storedItems.flatMap((storedItem): CartItem[] => {
-          if (
-            typeof storedItem !== 'object' ||
-            storedItem === null ||
-            !('productId' in storedItem) ||
-            !('quantity' in storedItem) ||
-            typeof storedItem.productId !== 'string' ||
-            typeof storedItem.quantity !== 'number' ||
-            !Number.isInteger(storedItem.quantity) ||
-            storedItem.quantity < 1
-          ) {
-            return [];
-          }
+    if (!supabase) return;
 
-          const product = products.find((candidate) => candidate.id === storedItem.productId);
-          if (!product || product.stock < 1) return [];
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id || null);
+    });
 
-          return [{ productId: product.id, quantity: Math.min(storedItem.quantity, product.stock) }];
-        }));
-      }
-    } catch {
-      window.localStorage.removeItem(storageKey);
-    } finally {
-      setIsHydrated(true);
-    }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // 2. Hydrate Cart (Load from LocalStorage OR Database)
+  useEffect(() => {
+    async function loadCartData() {
+      let loadedItems: any[] = [];
+
+      // Try LocalStorage first (for instant UI and guest users)
+      try {
+        const storedItems = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]');
+        if (Array.isArray(storedItems)) {
+          loadedItems = storedItems;
+        }
+      } catch {
+        window.localStorage.removeItem(storageKey);
+      }
+
+      // If logged in, fetch live cart from Supabase
+      if (supabase && userId) {
+        try {
+          const { data, error } = await supabase
+            .from('active_carts')
+            .select('cart_data')
+            .eq('user_id', userId)
+            .single();
+
+          if (data && data.cart_data) {
+            loadedItems = data.cart_data;
+          }
+        } catch (error) {
+          console.error("Error fetching cart from DB:", error);
+        }
+      }
+
+      // Validate items against product catalog
+      const validItems = loadedItems.flatMap((storedItem): CartItem[] => {
+        if (
+          typeof storedItem !== 'object' ||
+          storedItem === null ||
+          !('productId' in storedItem) ||
+          !('quantity' in storedItem) ||
+          typeof storedItem.productId !== 'string' ||
+          typeof storedItem.quantity !== 'number' ||
+          !Number.isInteger(storedItem.quantity) ||
+          storedItem.quantity < 1
+        ) {
+          return [];
+        }
+
+        const product = products.find((candidate) => candidate.id === storedItem.productId);
+        if (!product || product.stock < 1) return [];
+
+        return [{ productId: product.id, quantity: Math.min(storedItem.quantity, product.stock) }];
+      });
+
+      setItems(validItems);
+      setIsHydrated(true);
+    }
+
+    loadCartData();
+  }, [userId]); 
+
+  // 3. Save Cart (Save to LocalStorage AND Database)
   useEffect(() => {
     if (isHydrated) {
       window.localStorage.setItem(storageKey, JSON.stringify(items));
+
+      if (supabase && userId) {
+        supabase
+          .from('active_carts')
+          .upsert({ user_id: userId, cart_data: items })
+          .then(({ error }) => {
+            if (error) console.error("Error syncing cart to DB:", error);
+          });
+      }
     }
-  }, [items, isHydrated]);
+  }, [items, isHydrated, userId]);
 
   function addItem(productId: string, quantity = 1) {
     const product = products.find((candidate) => candidate.id === productId);
